@@ -54,22 +54,21 @@
             display: flex;
             flex-wrap: wrap;
             gap: 20px;
-            align-items: center; /* This will vertically align items in a row */
-            justify-content: center;
+            align-items: center; 
+            justify-content: center; 
         }
         .control-group {
             display: flex;
-            flex-direction: column; /* Stack label above input/select */
+            flex-direction: column; 
             gap: 5px;
-            /* align-items: flex-start; /* Align items to the start of the cross axis (if column, this is horizontal) */
         }
-        .control-group > label:not(#falseColorModeLabelContainer), /* All labels in control-group except the checkbox one */
+        .control-group > label:not(#falseColorModeLabelContainer), 
         .control-panel > label { 
             font-weight: 500;
             color: var(--text-muted-color);
             font-size: 0.9em;
             margin-bottom: 3px;
-            text-align: left; /* Ensure these labels are left-aligned */
+            text-align: left; 
         }
 
         select, button {
@@ -79,7 +78,7 @@
             background-color: var(--input-bg);
             color: var(--text-color);
             font-size: 1em;
-            min-height: 40px; /* Ensure consistent height with checkbox group */
+            min-height: 40px; 
             box-sizing: border-box;
         }
         select:focus, button:focus {
@@ -88,25 +87,24 @@
             box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
         }
 
-        /* Specific styling for the "Enable False Color" checkbox and its label container */
         #falseColorModeLabelContainer {
-            display: flex; /* Use flex to align checkbox and text */
-            align-items: center; /* Vertically center checkbox and text */
+            display: flex; 
+            align-items: center; 
             color: var(--text-muted-color);
             font-weight: 500;
             font-size: 0.9em;
             cursor: pointer;
-            padding: 10px 0; /* Add some padding to match height of selects/buttons */
-            min-height: 40px; /* Match height */
+            padding: 10px 0; 
+            min-height: 40px; 
             box-sizing: border-box;
         }
-        #enableFalseColor { /* The checkbox itself */
+        #enableFalseColor { 
             margin-right: 8px; 
             transform: scale(1.3);
             accent-color: var(--primary-color);
             background-color: var(--input-bg);
             border: 1px solid var(--border-color);
-            vertical-align: middle; /* Helps with inline-block behavior if any */
+            vertical-align: middle; 
         }
        
         #heatmapStyleControlsContainer, #stilgarScopeControlsContainer {
@@ -146,7 +144,7 @@
             border: 1px solid var(--border-color);
             border-radius: 6px;
         }
-        #stilgarScopeCheckboxes label {
+        #stilgarScopeCheckboxes label { 
             font-size: 0.9em;
             color: var(--text-muted-color);
         }
@@ -162,13 +160,13 @@
         }
         #legendContainer {
             padding: 15px;
-            display: flex; /* Use flex to center its children */
-            flex-direction: column; /* Stack children vertically */
-            align-items: center; /* Center children horizontally (like the canvas) */
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
         }
         #legendCanvas {
             border: 1px solid var(--border-color);
-            max-width: 100%; /* Allow canvas to be responsive within its container */
+            max-width: 100%; 
         }
         .error-message {
             color: var(--error-text);
@@ -186,6 +184,13 @@
     <h1>False Color Webcam</h1>
 
     <div id="controls" class="control-panel">
+        <div class="control-group">
+            <label for="cameraSelect">Camera:</label>
+            <select id="cameraSelect">
+                <option value="">Default Camera</option>
+                {/* <!-- Options will be populated by JavaScript --> */}
+            </select>
+        </div>
         <div class="control-group">
             <label for="resolutionSelect">Resolution:</label>
             <select id="resolutionSelect">
@@ -208,7 +213,7 @@
                 <option value="sepia">Sepia</option>
             </select>
         </div>
-        <div class="control-group"> <!-- This group specifically for the checkbox -->
+        <div class="control-group"> 
              <label for="enableFalseColor" id="falseColorModeLabelContainer">
                 <input type="checkbox" id="enableFalseColor">
                 Enable False Color
@@ -242,6 +247,7 @@
         const enableFalseColorCheckbox = document.getElementById('enableFalseColor');
         const falseColorModeSelect = document.getElementById('falseColorMode');
         const resolutionSelect = document.getElementById('resolutionSelect');
+        const cameraSelect = document.getElementById('cameraSelect'); // New select element
         const errorMessageElement = document.getElementById('errorMessage');
 
         const legendCanvas = document.getElementById('legendCanvas');
@@ -256,6 +262,7 @@
         let currentStream = null;
         let streamActive = false;
         let currentHeatmapStyle = 'viridis';
+        let videoDevices = []; // To store available camera devices
 
         // --- Stilgar Scope Definitions ---
         const NUM_STILGAR_STOPS = 11;
@@ -301,7 +308,7 @@
             return scale[scale.length-1].color;
         }
         
-        const heatmapStyles = { // Plasma removed
+        const heatmapStyles = { 
             'viridis': { name: 'Viridis', scale: [ { pos: 0.0,  color: { r: 68,  g: 1,   b: 84  } }, { pos: 0.25, color: { r: 59,  g: 82,  b: 139 } }, { pos: 0.5,  color: { r: 33,  g: 145, b: 140 } }, { pos: 0.75, color: { r: 93,  g: 201, b: 99  } }, { pos: 1.0,  color: { r: 253, g: 231, b: 37  } } ], apply: function(i) { return applyColorScale(i, this.scale); } },
             'magma': { name: 'Magma', scale: [ { pos: 0.0,  color: { r: 0,   g: 0,   b: 4   } }, { pos: 0.25, color: { r: 80,  g: 18,  b: 123 } }, { pos: 0.5,  color: { r: 180, g: 58,  b: 114 } }, { pos: 0.75, color: { r: 253, g: 137, b: 33  } }, { pos: 1.0,  color: { r: 251, g: 252, b: 191 } } ], apply: function(i) { return applyColorScale(i, this.scale); } },
             'cividis': { name: 'Cividis', scale: [ { pos: 0.0,  color: { r: 0,   g: 34,  b: 78  } }, { pos: 0.25, color: { r: 44,  g: 79,  b: 117 } }, { pos: 0.5,  color: { r: 96,  g: 126, b: 136 } }, { pos: 0.75, color: { r: 161, g: 173, b: 138 } }, { pos: 1.0,  color: { r: 255, g: 234, b: 70  } } ], apply: function(i) { return applyColorScale(i, this.scale); } },
@@ -328,15 +335,66 @@
                 heatmapStyleButtonsContainer.appendChild(btn);
             });
         }
+        
+        async function populateCameraList() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+                console.log("enumerateDevices() not supported.");
+                // Optionally disable the camera select or show a message
+                cameraSelect.disabled = true;
+                return;
+            }
+            try {
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                videoDevices = devices.filter(device => device.kind === 'videoinput');
+                
+                cameraSelect.innerHTML = '<option value="">Default Camera</option>'; // Reset
+                videoDevices.forEach((device, index) => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    // Try to make labels more user-friendly
+                    let label = device.label || `Camera ${index + 1}`;
+                    if (device.label.toLowerCase().includes('front')) label += ' (Front)';
+                    if (device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('rear')) label += ' (Rear)';
+                    option.text = label;
+                    cameraSelect.appendChild(option);
+                });
+                cameraSelect.disabled = videoDevices.length <= 1; // Disable if only one or no camera
+            } catch (err) {
+                console.error("Error enumerating devices:", err);
+                errorMessageElement.textContent = "Could not list cameras: " + err.message;
+                errorMessageElement.classList.remove('hidden');
+            }
+        }
+
 
         async function setupWebcam() {
             if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; streamActive = false; }
-            const resVal = resolutionSelect.value;
-            let constraints = { video: { facingMode: "user" }, audio: false };
-            if (resVal !== 'default') {
-                const [w, h] = resVal.split('x').map(Number);
-                constraints.video.width = { ideal: w }; constraints.video.height = { ideal: h };
+            
+            const selectedDeviceId = cameraSelect.value;
+            const selectedResolution = resolutionSelect.value;
+            
+            let videoConstraints = {};
+            if (selectedDeviceId) {
+                videoConstraints.deviceId = { exact: selectedDeviceId };
+            } else {
+                // Default behavior, let browser choose. On mobile, often defaults to front.
+                // We could try to hint for 'environment' (rear) camera if no specific deviceId is chosen
+                // videoConstraints.facingMode = { ideal: "environment" }; // To prefer rear camera by default
             }
+
+            if (selectedResolution !== 'default') {
+                const [width, height] = selectedResolution.split('x').map(Number);
+                videoConstraints.width = { ideal: width }; 
+                videoConstraints.height = { ideal: height };
+            }
+
+            const constraints = { 
+                video: Object.keys(videoConstraints).length > 0 ? videoConstraints : true, // Use true if no specific constraints yet
+                audio: false 
+            };
+            
+            console.log("Requesting media with constraints:", JSON.stringify(constraints, null, 2));
+
             try {
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 currentStream = stream; video.srcObject = stream;
@@ -354,9 +412,22 @@
                          updateModeControlsVisibility(); drawLegend(); requestAnimationFrame(drawFrame);
                      }
                 };
+                // After successfully getting a stream, repopulate camera list if it wasn't done or if labels are now available
+                if (videoDevices.length === 0 || videoDevices.some(d => d.label === '')) {
+                    populateCameraList();
+                }
+
             } catch (err) {
                 console.error("Webcam Error:", err.name, err.message);
-                errorMessageElement.textContent = `Error: ${err.name}. ${err.message}. Ensure camera is connected and permissions are granted.`;
+                let friendlyMessage = `Error: ${err.name}. ${err.message}. Ensure camera is connected and permissions are granted.`;
+                if (err.name === "OverconstrainedError" || err.name === "ConstraintNotSatisfiedError") {
+                    friendlyMessage = `The selected camera/resolution is not supported. Try different settings. Error: ${err.message}`;
+                } else if (err.name === "NotAllowedError") {
+                    friendlyMessage = `Camera access denied. Please grant permission. Error: ${err.message}`;
+                } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+                     friendlyMessage = `No camera found. Error: ${err.message}`;
+                }
+                errorMessageElement.textContent = friendlyMessage;
                 errorMessageElement.classList.remove('hidden');
                 streamActive = false; updateModeControlsVisibility(); drawLegend();
             }
@@ -400,7 +471,7 @@
             legendCtx.clearRect(0, 0, w, h);
             legendCtx.font = "bold 0.85em Arial"; 
             legendCtx.fillStyle = legendTextColor; 
-            legendCtx.textAlign = "center"; // This centers the title text
+            legendCtx.textAlign = "center"; 
             
             let modeName = falseColorModeSelect.options[falseColorModeSelect.selectedIndex].text;
             if (mode === 'heatmap' && heatmapStyles[currentHeatmapStyle]) modeName += ` (${heatmapStyles[currentHeatmapStyle].name})`;
@@ -425,14 +496,13 @@
                 }
                 legendCtx.font = "0.75em Arial"; 
                 legendCtx.fillStyle = legendTextColor; 
-                // For Low/High text, they are already positioned correctly by barX and barX + barW
                 legendCtx.textAlign = "left"; legendCtx.fillText("Low", barX, barY + barH + 15);
                 legendCtx.textAlign = "right"; legendCtx.fillText("High", barX + barW, barY + barH + 15);
             } else if (!streamActive) { 
-                legendCtx.textAlign = "center"; // Ensure placeholder text is centered
+                legendCtx.textAlign = "center"; 
                 legendCtx.fillText("Legend needs active camera.", w/2, h/2);
             } else { 
-                legendCtx.textAlign = "center"; // Ensure placeholder text is centered
+                legendCtx.textAlign = "center"; 
                 legendCtx.fillText("Enable 'False Color' for legend.", w/2, h/2); 
             }
         }
@@ -471,13 +541,23 @@
         }
 
         // Event Listeners
+        cameraSelect.addEventListener('change', setupWebcam); // New event listener
         resolutionSelect.addEventListener('change', setupWebcam);
         falseColorModeSelect.addEventListener('change', () => { updateModeControlsVisibility(); drawLegend(); });
         enableFalseColorCheckbox.addEventListener('change', () => { updateModeControlsVisibility(); drawLegend(); });
 
         // Initial Setup
-        createHeatmapStyleButtons(); createStilgarScopeCheckboxes();
-        setupWebcam(); updateModeControlsVisibility(); drawLegend();
+        async function initializeApp() {
+            createHeatmapStyleButtons(); 
+            createStilgarScopeCheckboxes();
+            await populateCameraList(); // Populate cameras first
+            await setupWebcam();        // Then setup the default/selected one
+            updateModeControlsVisibility(); 
+            drawLegend();
+        }
+
+        initializeApp();
+
     </script>
 </body>
 </html>
