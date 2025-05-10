@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>False Color Webcam - Dark Mode</title>
+    <style>
+        :root {
+            --primary-color: #007bff;
+            --primary-hover-color: #0056b3;
+            --body-bg: #1e1e1e;
+            --card-bg: #2c2c2c;
+            --border-color: #444;
+            --text-color: #e0e0e0;
+            --text-muted-color: #aaa;
+            --input-bg: #383838;
+            --button-bg: #3a3a3a;
+            --button-hover-bg: #4a4a4a;
+            --shadow-color: rgba(0,0,0,0.3);
+            --error-bg: #5c2323;
+            --error-border: #7a3030;
+            --error-text: #f8d7da;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--body-bg);
+            color: var(--text-color);
+            line-height: 1.6;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+        h1 {
+            color: #f5f5f5;
+            font-weight: 300;
+            margin-bottom: 25px;
+        }
+        .control-panel {
+            margin-bottom: 20px;
+            padding: 20px;
+            background-color: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px var(--shadow-color);
+            width: 90%;
+            max-width: 800px;
+            box-sizing: border-box;
+        }
+        #controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            align-items: center; /* This will vertically align items in a row */
+            justify-content: center;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column; /* Stack label above input/select */
+            gap: 5px;
+            /* align-items: flex-start; /* Align items to the start of the cross axis (if column, this is horizontal) */
+        }
+        .control-group > label:not(#falseColorModeLabelContainer), /* All labels in control-group except the checkbox one */
+        .control-panel > label { 
+            font-weight: 500;
+            color: var(--text-muted-color);
+            font-size: 0.9em;
+            margin-bottom: 3px;
+            text-align: left; /* Ensure these labels are left-aligned */
+        }
+
+        select, button {
+            padding: 10px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background-color: var(--input-bg);
+            color: var(--text-color);
+            font-size: 1em;
+            min-height: 40px; /* Ensure consistent height with checkbox group */
+            box-sizing: border-box;
+        }
+        select:focus, button:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+        }
+
+        /* Specific styling for the "Enable False Color" checkbox and its label container */
+        #falseColorModeLabelContainer {
+            display: flex; /* Use flex to align checkbox and text */
+            align-items: center; /* Vertically center checkbox and text */
+            color: var(--text-muted-color);
+            font-weight: 500;
+            font-size: 0.9em;
+            cursor: pointer;
+            padding: 10px 0; /* Add some padding to match height of selects/buttons */
+            min-height: 40px; /* Match height */
+            box-sizing: border-box;
+        }
+        #enableFalseColor { /* The checkbox itself */
+            margin-right: 8px; 
+            transform: scale(1.3);
+            accent-color: var(--primary-color);
+            background-color: var(--input-bg);
+            border: 1px solid var(--border-color);
+            vertical-align: middle; /* Helps with inline-block behavior if any */
+        }
+       
+        #heatmapStyleControlsContainer, #stilgarScopeControlsContainer {
+            text-align: center;
+        }
+        #heatmapStyleButtons, #stilgarScopeCheckboxes {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            margin-top: 10px;
+        }
+        #heatmapStyleButtons button {
+            background-color: var(--button-bg);
+            color: var(--text-color);
+            cursor: pointer;
+            min-width: 90px;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
+        }
+        #heatmapStyleButtons button:hover {
+            background-color: var(--button-hover-bg);
+            border-color: #555;
+        }
+        #heatmapStyleButtons button.active {
+            background-color: var(--primary-color);
+            color: white;
+            border-color: var(--primary-color);
+        }
+        #heatmapStyleButtons button.active:hover {
+            background-color: var(--primary-hover-color);
+        }
+        #stilgarScopeCheckboxes > div {
+            display: flex;
+            align-items: center;
+            padding: 6px 10px;
+            background-color: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+        }
+        #stilgarScopeCheckboxes label {
+            font-size: 0.9em;
+            color: var(--text-muted-color);
+        }
+        #webcam { display: none; }
+        #canvasOutput {
+            border: 2px solid var(--border-color);
+            background-color: #000;
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: block;
+        }
+        #legendContainer {
+            padding: 15px;
+            display: flex; /* Use flex to center its children */
+            flex-direction: column; /* Stack children vertically */
+            align-items: center; /* Center children horizontally (like the canvas) */
+        }
+        #legendCanvas {
+            border: 1px solid var(--border-color);
+            max-width: 100%; /* Allow canvas to be responsive within its container */
+        }
+        .error-message {
+            color: var(--error-text);
+            font-weight: 500;
+            margin-top: 15px;
+            background-color: var(--error-bg);
+            border: 1px solid var(--error-border);
+            padding: 10px 15px;
+            border-radius: 6px;
+        }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <h1>False Color Webcam</h1>
+
+    <div id="controls" class="control-panel">
+        <div class="control-group">
+            <label for="resolutionSelect">Resolution:</label>
+            <select id="resolutionSelect">
+                <option value="default">Default</option>
+                <option value="320x240">320x240 (QVGA)</option>
+                <option value="640x480" selected>640x480 (VGA)</option>
+                <option value="1280x720">1280x720 (HD)</option>
+                <option value="1920x1080">1920x1080 (Full HD)</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label for="falseColorMode">Processing Mode:</label>
+            <select id="falseColorMode">
+                <option value="heatmap">Heatmap</option>
+                <option value="stilgarScope">Stilgar Scope</option>
+                <option value="invertedGrayscale">Inverted Grayscale</option>
+                <option value="redChannel">Red Channel Dominant</option>
+                <option value="greenChannel">Green Channel Dominant</option>
+                <option value="blueChannel">Blue Channel Dominant</option>
+                <option value="sepia">Sepia</option>
+            </select>
+        </div>
+        <div class="control-group"> <!-- This group specifically for the checkbox -->
+             <label for="enableFalseColor" id="falseColorModeLabelContainer">
+                <input type="checkbox" id="enableFalseColor">
+                Enable False Color
+            </label>
+        </div>
+    </div>
+
+    <div id="heatmapStyleControlsContainer" class="control-panel hidden">
+        <label>Heatmap Style:</label>
+        <div id="heatmapStyleButtons"></div>
+    </div>
+
+    <div id="stilgarScopeControlsContainer" class="control-panel hidden">
+        <label>Stilgar Scope (Active Stops):</label>
+        <div id="stilgarScopeCheckboxes"></div>
+    </div>
+
+    <video id="webcam" autoplay playsinline></video>
+    <canvas id="canvasOutput"></canvas>
+
+    <div id="legendContainer" class="control-panel">
+        <canvas id="legendCanvas" width="300" height="70"></canvas>
+    </div>
+
+    <p id="errorMessage" class="error-message hidden"></p>
+
+    <script>
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('canvasOutput');
+        const ctx = canvas.getContext('2d');
+        const enableFalseColorCheckbox = document.getElementById('enableFalseColor');
+        const falseColorModeSelect = document.getElementById('falseColorMode');
+        const resolutionSelect = document.getElementById('resolutionSelect');
+        const errorMessageElement = document.getElementById('errorMessage');
+
+        const legendCanvas = document.getElementById('legendCanvas');
+        const legendCtx = legendCanvas.getContext('2d');
+
+        const heatmapStyleControlsContainer = document.getElementById('heatmapStyleControlsContainer');
+        const heatmapStyleButtonsContainer = document.getElementById('heatmapStyleButtons');
+        
+        const stilgarScopeControlsContainer = document.getElementById('stilgarScopeControlsContainer');
+        const stilgarScopeCheckboxesContainer = document.getElementById('stilgarScopeCheckboxes');
+
+        let currentStream = null;
+        let streamActive = false;
+        let currentHeatmapStyle = 'viridis';
+
+        // --- Stilgar Scope Definitions ---
+        const NUM_STILGAR_STOPS = 11;
+        const stilgarScopeColors = [
+            { r: 138, g: 43,  b: 226 }, { r: 75,  g: 0,   b: 130 }, { r: 0,   g: 0,   b: 255 },
+            { r: 0,   g: 191, b: 255 }, { r: 0,   g: 255, b: 0   }, { r: 173, g: 255, b: 47  },
+            { r: 255, g: 255, b: 0   }, { r: 255, g: 165, b: 0   }, { r: 255, g: 69,  b: 0   },
+            { r: 255, g: 0,   b: 0   }, { r: 139, g: 0,   b: 0   }
+        ];
+        let activeStilgarStops = new Array(NUM_STILGAR_STOPS).fill(true);
+
+        function createStilgarScopeCheckboxes() {
+            stilgarScopeCheckboxesContainer.innerHTML = '';
+            for (let i = 0; i < NUM_STILGAR_STOPS; i++) {
+                const stopDiv = document.createElement('div');
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox'; checkbox.id = `stilgarStop${i}`;
+                checkbox.checked = activeStilgarStops[i]; checkbox.dataset.stopIndex = i;
+                const label = document.createElement('label');
+                label.htmlFor = `stilgarStop${i}`; label.textContent = `Stop ${i + 1}`;
+                const swatch = document.createElement('span');
+                swatch.style.cssText = `display:inline-block; width:12px; height:12px; background-color:rgb(${stilgarScopeColors[i].r},${stilgarScopeColors[i].g},${stilgarScopeColors[i].b}); margin-left:5px; border:1px solid #555; border-radius:3px;`;
+                checkbox.addEventListener('change', (event) => {
+                    activeStilgarStops[parseInt(event.target.dataset.stopIndex)] = event.target.checked;
+                });
+                stopDiv.append(checkbox, label, swatch);
+                stilgarScopeCheckboxesContainer.appendChild(stopDiv);
+            }
+        }
+
+        // --- Heatmap Style Definitions ---
+        function interpolateColor(c1, c2, f) { return { r:Math.round(c1.r+f*(c2.r-c1.r)), g:Math.round(c1.g+f*(c2.g-c1.g)), b:Math.round(c1.b+f*(c2.b-c1.b))}; }
+        function applyColorScale(intensity, scale) {
+            const t = intensity / 255;
+            if (!scale || scale.length === 0) return { r: intensity, g: intensity, b: intensity };
+            if (scale.length === 1 || t <= scale[0].pos) return scale[0].color;
+            if (t >= scale[scale.length - 1].pos) return scale[scale.length - 1].color;
+            for (let i = 0; i < scale.length - 1; i++) {
+                const s1 = scale[i], s2 = scale[i+1];
+                if (s1.pos < s2.pos && t >= s1.pos && t <= s2.pos) return interpolateColor(s1.color, s2.color, (t - s1.pos) / (s2.pos - s1.pos));
+                if (s1.pos === s2.pos && t === s1.pos) return s1.color;
+            }
+            return scale[scale.length-1].color;
+        }
+        
+        const heatmapStyles = { // Plasma removed
+            'viridis': { name: 'Viridis', scale: [ { pos: 0.0,  color: { r: 68,  g: 1,   b: 84  } }, { pos: 0.25, color: { r: 59,  g: 82,  b: 139 } }, { pos: 0.5,  color: { r: 33,  g: 145, b: 140 } }, { pos: 0.75, color: { r: 93,  g: 201, b: 99  } }, { pos: 1.0,  color: { r: 253, g: 231, b: 37  } } ], apply: function(i) { return applyColorScale(i, this.scale); } },
+            'magma': { name: 'Magma', scale: [ { pos: 0.0,  color: { r: 0,   g: 0,   b: 4   } }, { pos: 0.25, color: { r: 80,  g: 18,  b: 123 } }, { pos: 0.5,  color: { r: 180, g: 58,  b: 114 } }, { pos: 0.75, color: { r: 253, g: 137, b: 33  } }, { pos: 1.0,  color: { r: 251, g: 252, b: 191 } } ], apply: function(i) { return applyColorScale(i, this.scale); } },
+            'cividis': { name: 'Cividis', scale: [ { pos: 0.0,  color: { r: 0,   g: 34,  b: 78  } }, { pos: 0.25, color: { r: 44,  g: 79,  b: 117 } }, { pos: 0.5,  color: { r: 96,  g: 126, b: 136 } }, { pos: 0.75, color: { r: 161, g: 173, b: 138 } }, { pos: 1.0,  color: { r: 255, g: 234, b: 70  } } ], apply: function(i) { return applyColorScale(i, this.scale); } },
+            'jet': { name: 'Jet', scale: [ { pos: 0.0,   color: { r: 0,   g: 0,   b: 127 } }, { pos: 0.125, color: { r: 0,   g: 0,   b: 255 } }, { pos: 0.375, color: { r: 0,   g: 255, b: 255 } }, { pos: 0.625, color: { r: 255, g: 255, b: 0   } }, { pos: 0.875, color: { r: 255, g: 0,   b: 0   } }, { pos: 1.0,   color: { r: 127, g: 0,   b: 0   } } ], apply: function(i) { return applyColorScale(i, this.scale); } },
+            'hot': { name: 'Hot', scale: [ { pos: 0.0,   color: { r: 0,   g: 0,   b: 0   } }, { pos: 0.375, color: { r: 255, g: 0,   b: 0   } }, { pos: 0.75,  color: { r: 255, g: 255, b: 0   } }, { pos: 1.0,   color: { r: 255, g: 255, b: 255 } } ], apply: function(i) { return applyColorScale(i, this.scale); } },
+            'coolwarm': { name: 'Coolwarm', scale: [ { pos: 0.0,  color: { r: 59,  g: 76,  b: 192 } }, { pos: 0.25, color: { r: 105, g: 136, b: 221 } }, { pos: 0.5,  color: { r: 224, g: 224, b: 224 } }, { pos: 0.75, color: { r: 220, g: 124, b: 120 } }, { pos: 1.0,  color: { r: 180, g: 4,   b: 38  } } ], apply: function(i) { return applyColorScale(i, this.scale); } },
+            'RdBu': { name: 'RdBu', scale: [ { pos: 0.0,  color: { r: 103, g: 0,   b: 31  } }, { pos: 0.25, color: { r: 202, g: 112, b: 87  } }, { pos: 0.5,  color: { r: 247, g: 247, b: 247 } }, { pos: 0.75, color: { r: 122, g: 163, b: 205 } }, { pos: 1.0,  color: { r: 5,   g: 48,  b: 97  } } ], apply: function(i) { return applyColorScale(i, this.scale); } },
+            'greys': { name: 'Greys', scale: [ { pos: 0.0, color: { r: 255, g: 255, b: 255 } }, { pos: 0.5, color: { r: 128, g: 128, b: 128 } }, { pos: 1.0, color: { r: 0,   g: 0,   b: 0   } } ], apply: function(i) { return applyColorScale(i, this.scale); } },
+            'rainbow': { name: 'Rainbow', scale: [ { pos: 0.0,   color: { r: 255, g: 0,   b: 0   } }, { pos: 0.2,   color: { r: 255, g: 127, b: 0   } }, { pos: 0.4,   color: { r: 255, g: 255, b: 0   } }, { pos: 0.6,   color: { r: 0,   g: 255, b: 0   } }, { pos: 0.8,   color: { r: 0,   g: 0,   b: 255 } }, { pos: 1.0,   color: { r: 139, g: 0,   b: 255 } } ], apply: function(i) { return applyColorScale(i, this.scale); } },
+            'turbo': { name: 'Turbo', scale: [ { pos: 0.0,   color: { r: 48,  g: 18,  b: 59  } },  { pos: 0.13,  color: { r: 63,  g: 68,  b: 159 } }, { pos: 0.25,  color: { r: 45,  g: 121, b: 180 } }, { pos: 0.38,  color: { r: 45,  g: 179, b: 114 } }, { pos: 0.5,   color: { r: 121, g: 209, b: 61  } }, { pos: 0.63,  color: { r: 173, g: 220, b: 48  } }, { pos: 0.75,  color: { r: 254, g: 200, b: 41  } }, { pos: 0.88,  color: { r: 250, g: 130, b: 39  } }, { pos: 1.0,   color: { r: 200, g: 50,  b: 33  } } ], apply: function(i) { return applyColorScale(i, this.scale); } }
+        };
+
+        function createHeatmapStyleButtons() {
+            heatmapStyleButtonsContainer.innerHTML = '';
+            Object.keys(heatmapStyles).forEach(key => {
+                const btn = document.createElement('button');
+                btn.textContent = heatmapStyles[key].name; btn.dataset.style = key;
+                if (key === currentHeatmapStyle) btn.classList.add('active');
+                btn.addEventListener('click', () => {
+                    currentHeatmapStyle = key;
+                    heatmapStyleButtonsContainer.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.style === key));
+                    drawLegend();
+                });
+                heatmapStyleButtonsContainer.appendChild(btn);
+            });
+        }
+
+        async function setupWebcam() {
+            if (currentStream) { currentStream.getTracks().forEach(t => t.stop()); currentStream = null; streamActive = false; }
+            const resVal = resolutionSelect.value;
+            let constraints = { video: { facingMode: "user" }, audio: false };
+            if (resVal !== 'default') {
+                const [w, h] = resVal.split('x').map(Number);
+                constraints.video.width = { ideal: w }; constraints.video.height = { ideal: h };
+            }
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                currentStream = stream; video.srcObject = stream;
+                video.onloadedmetadata = () => {
+                    if (video.videoWidth > 0 && video.videoHeight > 0) {
+                        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+                        streamActive = true; errorMessageElement.classList.add('hidden');
+                        updateModeControlsVisibility(); drawLegend(); requestAnimationFrame(drawFrame);
+                    } else { setTimeout(() => { if (video.videoWidth > 0) video.onloadedmetadata(); }, 200); }
+                };
+                video.onplay = () => {
+                     if (!streamActive && video.videoWidth > 0 && video.videoHeight > 0) {
+                         canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+                         streamActive = true; errorMessageElement.classList.add('hidden');
+                         updateModeControlsVisibility(); drawLegend(); requestAnimationFrame(drawFrame);
+                     }
+                };
+            } catch (err) {
+                console.error("Webcam Error:", err.name, err.message);
+                errorMessageElement.textContent = `Error: ${err.name}. ${err.message}. Ensure camera is connected and permissions are granted.`;
+                errorMessageElement.classList.remove('hidden');
+                streamActive = false; updateModeControlsVisibility(); drawLegend();
+            }
+        }
+
+        function getProcessedPixelColor(r_orig, g_orig, b_orig, mode) {
+            const intensity = Math.round((r_orig + g_orig + b_orig) / 3);
+            let r = intensity, g = intensity, b = intensity;
+
+            if (mode === 'heatmap') {
+                if (heatmapStyles[currentHeatmapStyle] && typeof heatmapStyles[currentHeatmapStyle].apply === 'function') {
+                    const color = heatmapStyles[currentHeatmapStyle].apply(intensity);
+                    if (color && typeof color.r === 'number') { r = color.r; g = color.g; b = color.b; }
+                }
+            } else if (mode === 'stilgarScope') {
+                const stopW = 255.0 / NUM_STILGAR_STOPS;
+                const idx = Math.min(NUM_STILGAR_STOPS - 1, Math.floor(Math.max(0,Math.min(255,intensity)) / stopW));
+                if (activeStilgarStops[idx]) { const c = stilgarScopeColors[idx]; r = c.r; g = c.g; b = c.b; }
+            } else if (mode === 'invertedGrayscale') { const inv = 255 - intensity; r = inv; g = inv; b = inv;
+            } else if (mode === 'redChannel')    { r = intensity; g = Math.round(g_orig * 0.2); b = Math.round(b_orig * 0.2);
+            } else if (mode === 'greenChannel')  { r = Math.round(r_orig * 0.2); g = intensity; b = Math.round(b_orig * 0.2);
+            } else if (mode === 'blueChannel')   { r = Math.round(r_orig * 0.2); g = Math.round(g_orig * 0.2); b = intensity;
+            } else if (mode === 'sepia') {
+                r = (r_orig*0.393)+(g_orig*0.769)+(b_orig*0.189); g = (r_orig*0.349)+(g_orig*0.686)+(b_orig*0.168); b = (r_orig*0.272)+(g_orig*0.534)+(b_orig*0.131);
+            }
+            return { r:Math.max(0,Math.min(255,Math.round(r))), g:Math.max(0,Math.min(255,Math.round(g))), b:Math.max(0,Math.min(255,Math.round(b))) };
+        }
+
+        function applyFalseColor(imageData) {
+            const data = imageData.data, mode = falseColorModeSelect.value;
+            for (let i = 0; i < data.length; i += 4) {
+                const p = getProcessedPixelColor(data[i], data[i+1], data[i+2], mode);
+                data[i] = p.r; data[i+1] = p.g; data[i+2] = p.b;
+            }
+        }
+
+        function drawLegend() {
+            const mode = falseColorModeSelect.value, w = legendCanvas.width, h = legendCanvas.height;
+            const legendTextColor = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || '#e0e0e0'; 
+
+            legendCtx.clearRect(0, 0, w, h);
+            legendCtx.font = "bold 0.85em Arial"; 
+            legendCtx.fillStyle = legendTextColor; 
+            legendCtx.textAlign = "center"; // This centers the title text
+            
+            let modeName = falseColorModeSelect.options[falseColorModeSelect.selectedIndex].text;
+            if (mode === 'heatmap' && heatmapStyles[currentHeatmapStyle]) modeName += ` (${heatmapStyles[currentHeatmapStyle].name})`;
+            else if (mode === 'stilgarScope') modeName = "Stilgar Scope";
+            legendCtx.fillText(modeName, w / 2, 15);
+
+            const barH = 20, barY = 25, barW = w - 40, barX = 20;
+            if (enableFalseColorCheckbox.checked && streamActive) {
+                if (mode === 'stilgarScope') {
+                    const segW = barW / NUM_STILGAR_STOPS;
+                    for (let i = 0; i < NUM_STILGAR_STOPS; i++) {
+                        const c = stilgarScopeColors[i]; legendCtx.fillStyle = `rgb(${c.r},${c.g},${c.b})`;
+                        legendCtx.fillRect(barX + i * segW, barY, segW, barH);
+                    }
+                } else {
+                    for (let i = 0; i < barW; i++) {
+                        const intensity = Math.floor((i / (barW - 1)) * 255);
+                        const c = getProcessedPixelColor(intensity, intensity, intensity, mode);
+                        legendCtx.fillStyle = `rgb(${c.r},${c.g},${c.b})`;
+                        legendCtx.fillRect(barX + i, barY, 1, barH);
+                    }
+                }
+                legendCtx.font = "0.75em Arial"; 
+                legendCtx.fillStyle = legendTextColor; 
+                // For Low/High text, they are already positioned correctly by barX and barX + barW
+                legendCtx.textAlign = "left"; legendCtx.fillText("Low", barX, barY + barH + 15);
+                legendCtx.textAlign = "right"; legendCtx.fillText("High", barX + barW, barY + barH + 15);
+            } else if (!streamActive) { 
+                legendCtx.textAlign = "center"; // Ensure placeholder text is centered
+                legendCtx.fillText("Legend needs active camera.", w/2, h/2);
+            } else { 
+                legendCtx.textAlign = "center"; // Ensure placeholder text is centered
+                legendCtx.fillText("Enable 'False Color' for legend.", w/2, h/2); 
+            }
+        }
+
+        let animationFrameId = null;
+        function drawFrame() {
+            if (!streamActive || !currentStream || video.paused || video.ended || video.videoWidth === 0 || video.videoHeight === 0 || video.readyState < video.HAVE_CURRENT_DATA) {
+                if (currentStream && !video.paused && !video.ended) animationFrameId = requestAnimationFrame(drawFrame);
+                return;
+            }
+            if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+                canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+            }
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            if (enableFalseColorCheckbox.checked) {
+                try {
+                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    applyFalseColor(imageData);
+                    ctx.putImageData(imageData, 0, 0);
+                } catch (e) {
+                    console.error("Error in false color processing:", e);
+                    streamActive = false; 
+                    errorMessageElement.textContent = "An error occurred during image processing. Please refresh.";
+                    errorMessageElement.classList.remove('hidden');
+                    if(animationFrameId) cancelAnimationFrame(animationFrameId);
+                    return; 
+                }
+            }
+            animationFrameId = requestAnimationFrame(drawFrame);
+        }
+
+        function updateModeControlsVisibility() {
+            const currentMode = falseColorModeSelect.value, enabled = enableFalseColorCheckbox.checked;
+            heatmapStyleControlsContainer.classList.toggle('hidden', !(currentMode === 'heatmap' && enabled));
+            stilgarScopeControlsContainer.classList.toggle('hidden', !(currentMode === 'stilgarScope' && enabled));
+        }
+
+        // Event Listeners
+        resolutionSelect.addEventListener('change', setupWebcam);
+        falseColorModeSelect.addEventListener('change', () => { updateModeControlsVisibility(); drawLegend(); });
+        enableFalseColorCheckbox.addEventListener('change', () => { updateModeControlsVisibility(); drawLegend(); });
+
+        // Initial Setup
+        createHeatmapStyleButtons(); createStilgarScopeCheckboxes();
+        setupWebcam(); updateModeControlsVisibility(); drawLegend();
+    </script>
+</body>
+</html>
