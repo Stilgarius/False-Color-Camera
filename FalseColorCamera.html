@@ -157,6 +157,10 @@
             border-radius: 8px;
             margin-bottom: 20px;
             display: block;
+            /* image-rendering: pixelated; /* Optional: for crisp pixels when upscaling low-res */
+            image-rendering: -moz-crisp-edges;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
         }
         #legendContainer {
             padding: 15px;
@@ -188,17 +192,23 @@
             <label for="cameraSelect">Camera:</label>
             <select id="cameraSelect">
                 <option value="">Default Camera</option>
-                {/* <!-- Options will be populated by JavaScript --> */}
             </select>
         </div>
         <div class="control-group">
-            <label for="resolutionSelect">Resolution:</label>
+            <label for="resolutionSelect">Stream Resolution:</label>
             <select id="resolutionSelect">
                 <option value="default">Default</option>
                 <option value="320x240">320x240 (QVGA)</option>
                 <option value="640x480" selected>640x480 (VGA)</option>
                 <option value="1280x720">1280x720 (HD)</option>
-                <option value="1920x1080">1920x1080 (Full HD)</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label for="processingQualitySelect">Processing Quality:</label>
+            <select id="processingQualitySelect">
+                <option value="high">High (Full Res)</option>
+                <option value="medium" selected>Medium (320px wide)</option>
+                <option value="low">Low (240px wide)</option>
             </select>
         </div>
         <div class="control-group">
@@ -232,7 +242,7 @@
     </div>
 
     <video id="webcam" autoplay playsinline></video>
-    <canvas id="canvasOutput"></canvas>
+    <canvas id="canvasOutput"></canvas> {/* This is the visible canvas */}
 
     <div id="legendContainer" class="control-panel">
         <canvas id="legendCanvas" width="300" height="70"></canvas>
@@ -242,12 +252,18 @@
 
     <script>
         const video = document.getElementById('webcam');
-        const canvas = document.getElementById('canvasOutput');
-        const ctx = canvas.getContext('2d');
+        const mainCanvas = document.getElementById('canvasOutput'); // Renamed for clarity
+        const mainCtx = mainCanvas.getContext('2d');
+        
+        // Offscreen canvas for processing
+        const processingCanvas = document.createElement('canvas');
+        const processingCtx = processingCanvas.getContext('2d');
+
         const enableFalseColorCheckbox = document.getElementById('enableFalseColor');
         const falseColorModeSelect = document.getElementById('falseColorMode');
         const resolutionSelect = document.getElementById('resolutionSelect');
-        const cameraSelect = document.getElementById('cameraSelect'); // New select element
+        const cameraSelect = document.getElementById('cameraSelect'); 
+        const processingQualitySelect = document.getElementById('processingQualitySelect'); // New
         const errorMessageElement = document.getElementById('errorMessage');
 
         const legendCanvas = document.getElementById('legendCanvas');
@@ -262,7 +278,7 @@
         let currentStream = null;
         let streamActive = false;
         let currentHeatmapStyle = 'viridis';
-        let videoDevices = []; // To store available camera devices
+        let videoDevices = []; 
 
         // --- Stilgar Scope Definitions ---
         const NUM_STILGAR_STOPS = 11;
@@ -339,30 +355,34 @@
         async function populateCameraList() {
             if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
                 console.log("enumerateDevices() not supported.");
-                // Optionally disable the camera select or show a message
-                cameraSelect.disabled = true;
-                return;
+                cameraSelect.disabled = true; return;
             }
             try {
+                // Important: Need to get permission first for full labels
+                // A temporary stream request might be needed if no stream is active yet
+                if (!currentStream) {
+                    const tempStream = await navigator.mediaDevices.getUserMedia({video:true, audio:false});
+                    tempStream.getTracks().forEach(track => track.stop()); // Stop temp stream immediately
+                }
+
                 const devices = await navigator.mediaDevices.enumerateDevices();
                 videoDevices = devices.filter(device => device.kind === 'videoinput');
                 
-                cameraSelect.innerHTML = '<option value="">Default Camera</option>'; // Reset
+                const currentSelectedId = cameraSelect.value; // Preserve selection if possible
+                cameraSelect.innerHTML = '<option value="">Default Camera</option>'; 
                 videoDevices.forEach((device, index) => {
                     const option = document.createElement('option');
                     option.value = device.deviceId;
-                    // Try to make labels more user-friendly
                     let label = device.label || `Camera ${index + 1}`;
-                    if (device.label.toLowerCase().includes('front')) label += ' (Front)';
-                    if (device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('rear')) label += ' (Rear)';
+                    if (device.label.toLowerCase().includes('front')) label = `Front Camera ${device.label.replace(/front|camera|\(|\)|[0-9]/gi, '').trim() || (index+1)}`;
+                    else if (device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('rear')) label = `Rear Camera ${device.label.replace(/back|rear|camera|\(|\)|[0-9]/gi, '').trim() || (index+1)}`;
                     option.text = label;
+                    if(device.deviceId === currentSelectedId) option.selected = true;
                     cameraSelect.appendChild(option);
                 });
-                cameraSelect.disabled = videoDevices.length <= 1; // Disable if only one or no camera
+                cameraSelect.disabled = videoDevices.length <= 1 && !cameraSelect.value; 
             } catch (err) {
                 console.error("Error enumerating devices:", err);
-                errorMessageElement.textContent = "Could not list cameras: " + err.message;
-                errorMessageElement.classList.remove('hidden');
             }
         }
 
@@ -376,10 +396,6 @@
             let videoConstraints = {};
             if (selectedDeviceId) {
                 videoConstraints.deviceId = { exact: selectedDeviceId };
-            } else {
-                // Default behavior, let browser choose. On mobile, often defaults to front.
-                // We could try to hint for 'environment' (rear) camera if no specific deviceId is chosen
-                // videoConstraints.facingMode = { ideal: "environment" }; // To prefer rear camera by default
             }
 
             if (selectedResolution !== 'default') {
@@ -389,35 +405,41 @@
             }
 
             const constraints = { 
-                video: Object.keys(videoConstraints).length > 0 ? videoConstraints : true, // Use true if no specific constraints yet
+                video: Object.keys(videoConstraints).length > 0 ? videoConstraints : true, 
                 audio: false 
             };
             
-            console.log("Requesting media with constraints:", JSON.stringify(constraints, null, 2));
-
             try {
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 currentStream = stream; video.srcObject = stream;
+                
                 video.onloadedmetadata = () => {
                     if (video.videoWidth > 0 && video.videoHeight > 0) {
-                        canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+                        // Set main canvas dimensions to match video stream for display
+                        mainCanvas.width = video.videoWidth; 
+                        mainCanvas.height = video.videoHeight;
+                        
                         streamActive = true; errorMessageElement.classList.add('hidden');
-                        updateModeControlsVisibility(); drawLegend(); requestAnimationFrame(drawFrame);
+                        updateModeControlsVisibility(); drawLegend(); 
+                        if(animationFrameId) cancelAnimationFrame(animationFrameId); // Clear previous animation loop
+                        drawFrame(); // Start new animation loop
+                        
+                        // Repopulate camera list here if labels were generic before
+                        if (videoDevices.length === 0 || videoDevices.some(d => !d.label || d.label.startsWith("camera"))) {
+                           populateCameraList();
+                        }
                     } else { setTimeout(() => { if (video.videoWidth > 0) video.onloadedmetadata(); }, 200); }
                 };
-                video.onplay = () => {
+                video.onplay = () => { // Fallback
                      if (!streamActive && video.videoWidth > 0 && video.videoHeight > 0) {
-                         canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+                         mainCanvas.width = video.videoWidth; mainCanvas.height = video.videoHeight;
                          streamActive = true; errorMessageElement.classList.add('hidden');
-                         updateModeControlsVisibility(); drawLegend(); requestAnimationFrame(drawFrame);
+                         updateModeControlsVisibility(); drawLegend(); 
+                         if(animationFrameId) cancelAnimationFrame(animationFrameId);
+                         drawFrame();
                      }
                 };
-                // After successfully getting a stream, repopulate camera list if it wasn't done or if labels are now available
-                if (videoDevices.length === 0 || videoDevices.some(d => d.label === '')) {
-                    populateCameraList();
-                }
-
-            } catch (err) {
+            } catch (err) { /* ... existing error handling ... */ 
                 console.error("Webcam Error:", err.name, err.message);
                 let friendlyMessage = `Error: ${err.name}. ${err.message}. Ensure camera is connected and permissions are granted.`;
                 if (err.name === "OverconstrainedError" || err.name === "ConstraintNotSatisfiedError") {
@@ -458,13 +480,14 @@
 
         function applyFalseColor(imageData) {
             const data = imageData.data, mode = falseColorModeSelect.value;
-            for (let i = 0; i < data.length; i += 4) {
+            const len = data.length; // Cache length
+            for (let i = 0; i < len; i += 4) {
                 const p = getProcessedPixelColor(data[i], data[i+1], data[i+2], mode);
                 data[i] = p.r; data[i+1] = p.g; data[i+2] = p.b;
             }
         }
 
-        function drawLegend() {
+        function drawLegend() { /* ... (no changes to legend drawing logic itself) ... */ 
             const mode = falseColorModeSelect.value, w = legendCanvas.width, h = legendCanvas.height;
             const legendTextColor = getComputedStyle(document.documentElement).getPropertyValue('--text-color').trim() || '#e0e0e0'; 
 
@@ -509,19 +532,49 @@
 
         let animationFrameId = null;
         function drawFrame() {
+            animationFrameId = requestAnimationFrame(drawFrame); // Request next frame immediately
+
             if (!streamActive || !currentStream || video.paused || video.ended || video.videoWidth === 0 || video.videoHeight === 0 || video.readyState < video.HAVE_CURRENT_DATA) {
-                if (currentStream && !video.paused && !video.ended) animationFrameId = requestAnimationFrame(drawFrame);
                 return;
             }
-            if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-                canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+            
+            // Ensure main display canvas matches video aspect ratio
+            if (mainCanvas.width !== video.videoWidth || mainCanvas.height !== video.videoHeight) {
+                mainCanvas.width = video.videoWidth; 
+                mainCanvas.height = video.videoHeight;
             }
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            let sourceForProcessing = video; // By default, process from the full video stream
+
             if (enableFalseColorCheckbox.checked) {
+                const quality = processingQualitySelect.value;
+                let procWidth = video.videoWidth;
+                let procHeight = video.videoHeight;
+
+                if (quality === 'medium') {
+                    procWidth = 320;
+                    procHeight = (video.videoHeight / video.videoWidth) * procWidth;
+                } else if (quality === 'low') {
+                    procWidth = 240;
+                    procHeight = (video.videoHeight / video.videoWidth) * procWidth;
+                }
+                // Ensure integer dimensions for canvas
+                procWidth = Math.round(procWidth);
+                procHeight = Math.round(procHeight);
+
+                if (processingCanvas.width !== procWidth || processingCanvas.height !== procHeight) {
+                    processingCanvas.width = procWidth;
+                    processingCanvas.height = procHeight;
+                }
+
+                // Draw video to offscreen processing canvas (scaled down if necessary)
+                processingCtx.drawImage(video, 0, 0, processingCanvas.width, processingCanvas.height);
+                
                 try {
-                    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                    const imageData = processingCtx.getImageData(0, 0, processingCanvas.width, processingCanvas.height);
                     applyFalseColor(imageData);
-                    ctx.putImageData(imageData, 0, 0);
+                    processingCtx.putImageData(imageData, 0, 0);
+                    sourceForProcessing = processingCanvas; // Now use the processed canvas as the source
                 } catch (e) {
                     console.error("Error in false color processing:", e);
                     streamActive = false; 
@@ -531,18 +584,28 @@
                     return; 
                 }
             }
-            animationFrameId = requestAnimationFrame(drawFrame);
+            
+            // Draw to the main visible canvas (either raw video or processed (and potentially upscaled) video)
+            mainCtx.drawImage(sourceForProcessing, 0, 0, mainCanvas.width, mainCanvas.height);
+
         }
 
         function updateModeControlsVisibility() {
             const currentMode = falseColorModeSelect.value, enabled = enableFalseColorCheckbox.checked;
             heatmapStyleControlsContainer.classList.toggle('hidden', !(currentMode === 'heatmap' && enabled));
             stilgarScopeControlsContainer.classList.toggle('hidden', !(currentMode === 'stilgarScope' && enabled));
+            processingQualitySelect.disabled = !enabled; // Disable quality select if false color is off
         }
 
         // Event Listeners
-        cameraSelect.addEventListener('change', setupWebcam); // New event listener
+        cameraSelect.addEventListener('change', setupWebcam); 
         resolutionSelect.addEventListener('change', setupWebcam);
+        processingQualitySelect.addEventListener('change', () => {
+            // No need to call setupWebcam, just the next drawFrame will use the new quality
+            if (streamActive && animationFrameId == null) { // If processing was stopped due to error, restart it
+                drawFrame();
+            }
+        });
         falseColorModeSelect.addEventListener('change', () => { updateModeControlsVisibility(); drawLegend(); });
         enableFalseColorCheckbox.addEventListener('change', () => { updateModeControlsVisibility(); drawLegend(); });
 
@@ -550,8 +613,8 @@
         async function initializeApp() {
             createHeatmapStyleButtons(); 
             createStilgarScopeCheckboxes();
-            await populateCameraList(); // Populate cameras first
-            await setupWebcam();        // Then setup the default/selected one
+            await populateCameraList(); 
+            await setupWebcam();        
             updateModeControlsVisibility(); 
             drawLegend();
         }
